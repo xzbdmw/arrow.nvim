@@ -96,7 +96,7 @@ function M.setup(opts)
 	if buffer_leader_key then
 		vim.keymap.set("n", buffer_leader_key, require("arrow.buffer_ui").openMenu, { noremap = true, silent = true })
 
-		local b_config = opts.per_buffer_config
+		local b_config = config.getState("per_buffer_config")
 		if b_config.zindex then
 			config.setState("buffer_mark_zindex", b_config.zindex)
 		end
@@ -182,9 +182,11 @@ function M.setup(opts)
 
 	vim.api.nvim_create_autocmd({ "DirChanged", "SessionLoadPost" }, {
 		callback = function()
-			git.refresh_git_branch()
-			persist.load_cache_file()
-			config.setState("save_key_cached", config.getState("save_key")())
+			vim.defer_fn(function()
+				git.refresh_git_branch()
+				persist.load_cache_file()
+				config.setState("save_key_cached", config.getState("save_key")())
+			end, 100)
 		end,
 		desc = "load cache file on DirChanged",
 		group = "arrow",
@@ -192,11 +194,24 @@ function M.setup(opts)
 
 	vim.api.nvim_create_autocmd({ "BufReadPost" }, {
 		callback = function()
-			buffer_persist.load_buffer_bookmarks()
+			vim.defer_fn(function()
+				buffer_persist.load_buffer_bookmarks()
+			end, 100)
 		end,
 		desc = "load current file cache",
 		group = "arrow",
 	})
+
+	-- vim.api.nvim_create_autocmd({ "User" }, {
+	-- 	pattern = "LazyLoad",
+	-- 	callback = function(data)
+	-- 		if data.data == "arrow.nvim" then
+	-- 			buffer_persist.load_buffer_bookmarks()
+	-- 		end
+	-- 	end,
+	-- 	desc = "load current file cache on lazy load",
+	-- 	group = "arrow",
+	-- })
 
 	commands.setup()
 end

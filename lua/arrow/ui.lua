@@ -137,6 +137,7 @@ end
 
 -- Function to close the menu and open the selected file
 local function closeMenu()
+	_G.no_animation()
 	local win = vim.fn.win_getid()
 	vim.api.nvim_win_close(win, true)
 end

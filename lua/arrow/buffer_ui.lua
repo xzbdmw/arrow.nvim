@@ -10,6 +10,7 @@ local has_current_line = false
 local current_line_index = -1
 local call_win = -1
 local delete_mode = false
+local note_mode = false
 local current_highlight = nil
 local to_delete = {}
 local spawn_col = -1
@@ -24,9 +25,13 @@ end
 vim.api.nvim_create_autocmd({ "BufLeave", "BufWritePost" }, {
 	callback = function(args)
 		local bufnr = tonumber(args.buf)
-		if persist.get_bookmarks_by(bufnr) ~= nil then
-			update_everything(bufnr)
-		end
+		vim.defer_fn(function()
+			if vim.api.nvim_buf_is_valid(bufnr) then
+				if persist.get_bookmarks_by(bufnr) ~= nil then
+					update_everything(bufnr)
+				end
+			end
+		end, 10)
 	end,
 })
 
@@ -44,6 +49,7 @@ local function getActionsMenu(count)
 			string.format("  %s Delete Mode", mappings.delete_mode),
 			string.format("  %s Clear All", mappings.clear_all_items),
 			string.format("  %s Quit", mappings.quit),
+			string.format("  %s Note", "n"),
 		}
 	end
 
@@ -56,66 +62,89 @@ local function getActionsMenu(count)
 	return return_mappings
 end
 
-function M.spawn_preview_window(buffer, index, bookmark, bookmark_count)
+function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith)
+	-- 4,13,22
 	local lines_count = config.getState("per_buffer_config").lines
-
 	local height = math.ceil((vim.o.lines - 4) / 2)
-
-	local row = height + (index - 1) * (lines_count + 2) - (bookmark_count - 1) * lines_count
-
+	local row = 0
+	if bookmark_count <= 3 then
+		if bookmark_count == 1 then
+			row = 10
+		elseif bookmark_count == 2 then
+			if index == 1 then
+				row = 8
+			elseif index == 2 then
+				row = 17
+			end
+		elseif bookmark_count == 3 then
+			if index == 1 then
+				row = 4
+			elseif index == 2 then
+				row = 13
+			elseif index == 3 then
+				row = 22
+			end
+		end
+	else
+		row = height + (index - 1) * (lines_count + 2) - (bookmark_count - 1) * lines_count + 2
+	end
 	local width = math.ceil(vim.o.columns / 2)
-	
-	local zindex = config.getState("buffer_mark_zindex")
-
 	lastRow = row
 	spawn_col = width
 
 	local window_config = {
 		height = lines_count,
+		-- noautocmd = true,
 		width = width,
 		row = row,
 		col = math.ceil((vim.o.columns - width) / 2),
 		relative = "editor",
-		border = "single",
-		zindex = zindex or 50,
+		border = "solid",
+		zindex = 11,
 	}
 
 	local displayIndex = config.getState("index_keys"):sub(index, index)
 
 	local win = vim.api.nvim_open_win(buffer, true, window_config)
+	vim.wo[win].signcolumn = "no"
 
 	local extra_title = ""
 
 	if current_line_index == index then
-		extra_title = "(Current)"
+		extra_title = "(Current) "
 	end
-
+	local title = {}
+	table.insert(title, { displayIndex .. " " .. extra_title, "FloatTitle" })
+	if bookmark.note ~= nil then
+		table.insert(title, { bookmark.note, "ArrowBookmarkNote" })
+	end
 	vim.api.nvim_win_set_option(win, "scrolloff", 999)
+	local footer = string.rep("─", vim.api.nvim_win_get_width(win))
 	vim.api.nvim_win_set_cursor(win, { bookmark.line, 0 })
-	vim.api.nvim_win_set_config(win, { title = displayIndex .. " " .. extra_title })
+	vim.api.nvim_win_set_config(win, { title = title, title_pos = "left" })
+	if ith < bookmark_count then
+		vim.api.nvim_win_set_config(win, { footer = { { footer, "NvimTreeWinSeparator" } }, footer_pos = "left" })
+	end
 	vim.api.nvim_win_set_option(win, "number", true)
-
 	table.insert(preview_buffers, { buffer = buffer, win = win, index = index })
 
 	local ctx_config = config.getState("per_buffer_config").treesitter_context
 	if ctx_config ~= nil and ctx_config.line_shift_down ~= nil then
 		local shift = ctx_config.line_shift_down
-
 		local win_view = vim.fn.winsaveview()
 		vim.api.nvim_win_set_option(win, "scrolloff", 0)
 		vim.fn.winrestview({ topline = win_view.topline - shift })
-
 		local ok, _ = pcall(require, "treesitter-context")
 		if not ok then
 			vim.notify("you don't have treesitter-context installed", vim.log.levels.WARN)
 			return
 		end
 
-		local context, context_lines = require("treesitter-context.context").get(buffer, win)
+		local context, context_lines = require("treesitter-context.context").get(buffer, win, 2)
 		if context and #context > 0 then
 			vim.defer_fn(function()
 				require("treesitter-context.render").open(buffer, win, context, context_lines)
-			end, 10)
+			end, 1)
 		end
 	end
 end
@@ -129,6 +158,49 @@ local function remove_preview_buffer_by_index(index)
 	end
 end
 
+local function restore_cursor()
+	vim.cmd("highlight clear Cursor")
+
+	vim.schedule(function()
+		local old_hl = hl
+		old_hl.blend = 0
+		pcall(vim.api.nvim_set_hl, 0, "Cursor", old_hl)
+		vim.opt.guicursor:remove("a:Cursor/lCursor")
+	end)
+end
+
+local function hide_cursor()
+	hl = vim.api.nvim_get_hl_by_name("Cursor", true)
+	hl.blend = 100
+
+	vim.opt.guicursor:append("a:Cursor/lCursor")
+
+	pcall(vim.api.nvim_set_hl, 0, "Cursor", hl)
+end
+
+local function add_note_by_index(index, bufnr)
+	for i, buffer in ipairs(preview_buffers) do
+		if buffer.index == index then
+			restore_cursor()
+			vim.ui.input({ prompt = "Add notes: ", completion = "file", default = "" }, function(input)
+				if input == nil then
+					return
+				end
+				input = input .. " "
+				persist.add_notes(i, input, bufnr)
+				local win_config = vim.api.nvim_win_get_config(buffer.win)
+				if win_config.title[2] ~= nil then
+					win_config.title[2][1] = input
+				else
+					win_config.title[2] = { input, "ArrowBookmarkNote" }
+				end
+				vim.api.nvim_win_set_config(buffer.win, win_config)
+				hide_cursor()
+			end)
+		end
+	end
+end
+
 local function close_preview_windows()
 	for _, buffer in ipairs(preview_buffers) do
 		vim.schedule(function()
@@ -137,6 +209,7 @@ local function close_preview_windows()
 			end
 		end)
 	end
+	_G.no_animation()
 end
 
 local function reset_variables()
@@ -147,6 +220,7 @@ local function reset_variables()
 	to_delete = {}
 	call_win = -1
 	delete_mode = false
+	note_mode = false
 	spawn_col = -1
 
 	if current_highlight then
@@ -212,6 +286,7 @@ local function go_to_bookmark(bookmark)
 
 	if bookmark.line < top_line or bookmark.line >= top_line + win_height then
 		vim.cmd("normal! zz")
+		require("config.utils").adjust_view(0, 3)
 	end
 end
 
@@ -227,6 +302,24 @@ local function toggle_delete_mode(action_buffer)
 		local arrow_delete_mode = vim.api.nvim_get_hl_by_name("ArrowDeleteMode", true)
 
 		vim.api.nvim_set_hl(0, "FloatBorder", { fg = arrow_delete_mode.bg or "red" })
+	end
+
+	render_highlights(action_buffer)
+end
+
+local function toggle_note_mode(action_buffer)
+	if note_mode then
+		note_mode = false
+
+		pcall(vim.api.nvim_set_hl, 0, "FloatBorder", current_highlight)
+	else
+		note_mode = true
+
+		current_highlight = vim.api.nvim_get_hl_by_name("FloatBorder", true)
+		local arrow_note_mode = vim.api.nvim_get_hl_by_name("ArrowNoteMode", true)
+		-- __AUTO_GENERATED_PRINT_VAR_START__
+		-- print([==[toggle_note_mode#if arrow_note_mode:]==], vim.inspect(arrow_note_mode.bg)) -- __AUTO_GENERATED_PRINT_VAR_END__
+		vim.api.nvim_set_hl(0, "FloatBorder", { fg = arrow_note_mode.background or "red" })
 	end
 
 	render_highlights(action_buffer)
@@ -301,12 +394,20 @@ end
 function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_window, index)
 	local actions_buffer = vim.api.nvim_create_buf(false, true)
 
+	hl = vim.api.nvim_get_hl_by_name("Cursor", true)
+	hl.blend = 100
+
+	vim.opt.guicursor:append("a:Cursor/lCursor")
+
+	pcall(vim.api.nvim_set_hl, 0, "Cursor", hl)
+
 	local lines_count = config.getState("per_buffer_config").lines
 
 	local width = math.ceil(vim.o.columns / 2)
 
 	local window_config
 
+	local nvim10 = vim.fn.has("nvim-0.10") > 0
 	if #bookmarks == 0 then
 		window_config = {
 			height = 2,
@@ -314,21 +415,25 @@ function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_wi
 			row = math.ceil((vim.o.lines - 2) / 2),
 			col = math.ceil((vim.o.columns - 15) / 2),
 			style = "minimal",
+			zindex = 11,
 			relative = "editor",
-			border = "single",
+			border = "solid",
 		}
 	else
 		window_config = {
-			height = 4,
+			height = 5,
 			width = 17,
 			row = lastRow + lines_count + 2,
 			col = width - spawn_col / 2,
 			style = "minimal",
+			zindex = 11,
 			relative = "editor",
-			border = "single",
+			border = "solid",
 		}
+		if nvim10 then
+			window_config.hide = true
+		end
 	end
-
 	vim.api.nvim_open_win(actions_buffer, true, window_config)
 
 	local mappings = config.getState("mappings")
@@ -366,6 +471,12 @@ function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_wi
 		closeMenu(actions_buffer, call_buffer)
 	end, menuKeymapOpts)
 
+	vim.keymap.set("n", "n", function()
+		if #bookmarks > 0 then
+			toggle_note_mode(actions_buffer)
+		end
+	end, menuKeymapOpts)
+
 	vim.keymap.set("n", mappings.delete_mode, function()
 		if #bookmarks > 0 then
 			toggle_delete_mode(actions_buffer)
@@ -398,6 +509,8 @@ function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_wi
 			if not found then
 				if delete_mode then
 					remove_preview_buffer_by_index(i)
+				elseif note_mode then
+					add_note_by_index(i, call_buffer)
 				else
 					closeMenu(actions_buffer, call_buffer)
 					go_to_bookmark(bookmark)
@@ -406,22 +519,24 @@ function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_wi
 		end, menuKeymapOpts)
 	end
 
-	vim.api.nvim_set_hl(0, "ArrowCursor", { nocombine = true, blend = 100 })
-	vim.opt.guicursor:append("a:ArrowCursor/ArrowCursor")
-
 	vim.api.nvim_create_autocmd("BufLeave", {
 		buffer = 0,
-		desc = "Disable Cursor",
 		once = true,
+		desc = "Disable Cursor",
 		callback = function()
-			close_preview_windows()
-			if vim.api.nvim_buf_is_valid(actions_buffer) then
-				closeMenu(actions_buffer, call_buffer)
-			end
+			vim.cmd("highlight clear Cursor")
 
-			vim.cmd("highlight clear ArrowCursor")
+			close_preview_windows()
 			vim.schedule(function()
-				vim.opt.guicursor:remove("a:ArrowCursor/ArrowCursor")
+				local old_hl = hl
+				old_hl.blend = 0
+				pcall(vim.api.nvim_set_hl, 0, "Cursor", old_hl)
+
+				if vim.api.nvim_buf_is_valid(actions_buffer) then
+					closeMenu(actions_buffer, call_buffer)
+				end
+
+				vim.opt.guicursor:remove("a:Cursor/lCursor")
 			end)
 		end,
 	})
@@ -456,8 +571,8 @@ function M.openMenu(bufnr)
 		table.insert(opts_for_spawn, { bufnr, index, bookmark })
 	end
 
-	for _, opt in ipairs(opts_for_spawn) do
-		M.spawn_preview_window(opt[1], opt[2], opt[3], #bookmarks)
+	for i, opt in ipairs(opts_for_spawn) do
+		M.spawn_preview_window(opt[1], opt[2], opt[3], #bookmarks, i)
 	end
 
 	M.spawn_action_windows(bufnr, bookmarks, line_nr, col_nr, cur_win)

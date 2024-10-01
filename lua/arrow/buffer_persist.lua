@@ -47,13 +47,17 @@ function M.redraw_bookmarks(bufnr, result)
 
 		local line = res.line
 
-		local id = vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, -1, {
+		local ok,id = pcall(vim.api.nvim_buf_set_extmark,bufnr, ns, line - 1, -1, {
 			sign_text = indexes:sub(i, i) .. "",
 			sign_hl_group = "ArrowBookmarkSign",
 			hl_mode = "combine",
 		})
+		if not ok then
+			goto continue
+		end
 
 		res.ext_id = id
+	    ::continue::
 	end
 	notify()
 end
@@ -98,13 +102,13 @@ end
 function M.sync_buffer_bookmarks(bufnr)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-	if
-		M.last_sync_bookmarks[bufnr]
-		and M.local_bookmarks[bufnr]
-		and utils.table_comp(M.last_sync_bookmarks[bufnr], M.local_bookmarks[bufnr])
-	then
-		return
-	end
+	-- if
+	-- 	M.last_sync_bookmarks[bufnr]
+	-- 	and M.local_bookmarks[bufnr]
+	-- 	and utils.table_comp(M.last_sync_bookmarks[bufnr], M.local_bookmarks[bufnr])
+	-- then
+	-- 	return
+	-- end
 
 	if config.getState("per_buffer_config").sort_automatically then
 		table.sort(M.local_bookmarks[bufnr], function(a, b)
@@ -168,6 +172,21 @@ function M.remove(index, bufnr)
 	M.sync_buffer_bookmarks(bufnr)
 end
 
+function M.add_notes(index, input, bufnr)
+	bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+	if M.local_bookmarks[bufnr] == nil then
+		return
+	end
+
+	if M.local_bookmarks[bufnr][index] == nil then
+		return
+	end
+	M.local_bookmarks[bufnr][index].note = input
+
+	M.sync_buffer_bookmarks(bufnr)
+end
+
 function M.clear(bufnr)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
@@ -211,7 +230,7 @@ function M.update(bufnr)
 	notify()
 end
 
-function M.save(bufnr, line_nr, col_nr)
+function M.save(bufnr, line_nr, col_nr, note)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
 	if not M.local_bookmarks[bufnr] then
@@ -221,6 +240,7 @@ function M.save(bufnr, line_nr, col_nr)
 	local data = {
 		line = line_nr,
 		col = col_nr,
+		note = note,
 	}
 
 	if not (M.is_saved(bufnr, data)) then
