@@ -195,28 +195,32 @@ function M.open_cache_file()
 	end
 
 	local bufnr = vim.api.nvim_create_buf(false, true)
-
+	local max_width = 0
+	for _, l in ipairs(cache_content) do
+		max_width = math.max(max_width, vim.fn.strlen(l)) + 3
+	end
 	vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, cache_content)
 
 	local width = math.min(80, vim.fn.winwidth(0) - 4)
-	local height = math.min(20, #cache_content + 2)
+	local height = math.min(20, #cache_content)
 
 	local row = math.ceil((vim.o.lines - height) / 2)
-	local col = math.ceil((vim.o.columns - width) / 2)
+	local col = math.ceil((vim.o.columns - max_width) / 2)
 
 	local opts = {
 		style = "minimal",
 		relative = "editor",
-		width = width,
+		width = max_width,
 		height = height,
-		row = row,
+		row = 10,
 		col = col,
 		focusable = true,
-		border = "single",
+		border = "solid",
 	}
 
 	local winid = vim.api.nvim_open_win(bufnr, true, opts)
-
+	vim.wo[winid].signcolumn = "yes:1"
+	vim.wo[winid].winhighlight = "LineNr:ArrowFileIndex"
 	local close_buffer = ":lua vim.api.nvim_win_close(" .. winid .. ", {force = true})<CR>"
 	vim.api.nvim_buf_set_keymap(bufnr, "n", "q", close_buffer, { noremap = true, silent = true })
 	vim.api.nvim_buf_set_keymap(bufnr, "n", "<Esc>", close_buffer, { noremap = true, silent = true })

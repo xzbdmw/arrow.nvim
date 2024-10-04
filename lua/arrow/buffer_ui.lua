@@ -62,7 +62,7 @@ local function getActionsMenu(count)
 	return return_mappings
 end
 
-function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith)
+function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith, parent_win)
 	-- 4,13,22
 	local lines_count = config.getState("per_buffer_config").lines
 	local height = math.ceil((vim.o.lines - 4) / 2)
@@ -88,17 +88,18 @@ function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith)
 	else
 		row = height + (index - 1) * (lines_count + 2) - (bookmark_count - 1) * lines_count + 2
 	end
-	local width = math.ceil(vim.o.columns / 2)
+	local width = vim.api.nvim_win_get_width(parent_win) - 20
 	lastRow = row
 	spawn_col = width
 
 	local window_config = {
+		win = parent_win,
 		height = lines_count,
 		-- noautocmd = true,
 		width = width,
 		row = row,
-		col = math.ceil((vim.o.columns - width) / 2),
-		relative = "editor",
+		col = -1,
+		relative = "win",
 		border = "solid",
 		zindex = 11,
 	}
@@ -106,7 +107,6 @@ function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith)
 	local displayIndex = config.getState("index_keys"):sub(index, index)
 
 	local win = vim.api.nvim_open_win(buffer, true, window_config)
-	vim.wo[win].signcolumn = "no"
 
 	local extra_title = ""
 
@@ -545,6 +545,7 @@ function M.spawn_action_windows(call_buffer, bookmarks, line_nr, col_nr, call_wi
 end
 
 function M.openMenu(bufnr)
+	local parent_win = vim.api.nvim_get_current_win()
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 	persist.update()
 	persist.sync_buffer_bookmarks()
@@ -572,7 +573,7 @@ function M.openMenu(bufnr)
 	end
 
 	for i, opt in ipairs(opts_for_spawn) do
-		M.spawn_preview_window(opt[1], opt[2], opt[3], #bookmarks, i)
+		M.spawn_preview_window(opt[1], opt[2], opt[3], #bookmarks, i, parent_win)
 	end
 
 	M.spawn_action_windows(bufnr, bookmarks, line_nr, col_nr, cur_win)
