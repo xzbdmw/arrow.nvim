@@ -82,7 +82,7 @@ local function format_file_names(file_names)
 		end
 	end
 
-	for _, full_path in ipairs(file_names) do
+	for index, full_path in ipairs(file_names) do
 		local tail = vim.fn.fnamemodify(full_path, ":t:r")
 		local tail_with_extension = vim.fn.fnamemodify(full_path, ":t")
 
@@ -103,9 +103,9 @@ local function format_file_names(file_names)
 				local location = vim.fn.fnamemodify(full_path, ":h:h")
 
 				if #name_occurrences[folder_name] > 1 or config.getState("always_show_path") then
-					table.insert(formatted_names, string.format("%s . %s", folder_name .. "/", location))
+					table.insert(formatted_names, string.format("%s [%s] . %s", folder_name .. "/", index, location))
 				else
-					table.insert(formatted_names, string.format("%s", folder_name .. "/"))
+					table.insert(formatted_names, string.format("[%s] %s", index, folder_name .. "/"))
 				end
 			else
 				if config.getState("always_show_path") then
@@ -119,7 +119,7 @@ local function format_file_names(file_names)
 			and #name_occurrences[tail] == 1
 			and not (vim.tbl_contains(full_path_list, tail))
 		then
-			table.insert(formatted_names, tail_with_extension)
+			table.insert(formatted_names, string.format("%s [%s]", tail_with_extension, index))
 		else
 			local path = vim.fn.fnamemodify(full_path, ":h")
 			local display_path = path
@@ -128,7 +128,7 @@ local function format_file_names(file_names)
 				display_path = vim.fn.fnamemodify(full_path, ":h")
 			end
 
-			table.insert(formatted_names, string.format("%s . %s", tail_with_extension, display_path))
+			table.insert(formatted_names, string.format("%s [%s] . %s", tail_with_extension, index, display_path))
 		end
 	end
 
@@ -160,12 +160,12 @@ local function renderBuffer(buffer)
 	local buf = buffer or vim.api.nvim_get_current_buf()
 	local lines = { "" }
 
-	local formattedFleNames = format_file_names(fileNames)
+	local formattedFileNames = format_file_names(fileNames)
 
 	to_highlight = {}
 	current_index = 0
 
-	for i, fileName in ipairs(formattedFleNames) do
+	for i, fileName in ipairs(formattedFileNames) do
 		local displayIndex = i
 
 		displayIndex = config.getState("index_keys"):sub(i, i)
@@ -194,7 +194,7 @@ local function renderBuffer(buffer)
 			fileName = icon .. " " .. fileName
 		end
 
-		table.insert(lines, string.format("   %s %s", displayIndex, fileName))
+		table.insert(lines, string.format("   %s", fileName))
 	end
 
 	-- Add a separator
@@ -250,7 +250,7 @@ local function render_highlights(buffer)
 
 	if config.getState("show_icons") then
 		for k, v in pairs(to_highlight) do
-			vim.api.nvim_buf_add_highlight(menuBuf, -1, v, k, 5, 8)
+			vim.api.nvim_buf_add_highlight(menuBuf, -1, v, k, 3, 6)
 		end
 	end
 
@@ -301,6 +301,10 @@ local function render_highlights(buffer)
 	while line_number <= #fileNames + 1 do
 		local line_content = vim.api.nvim_buf_get_lines(menuBuf, line_number - 1, line_number, false)[1]
 
+		local s, e = string.find(line_content, "%[(%d+)%]")
+		if s then
+			vim.api.nvim_buf_add_highlight(menuBuf, -1, "@variable.member.lua", line_number - 1, s - 1, e)
+		end
 		local match_start, match_end = string.find(line_content, pattern)
 		if match_start then
 			vim.api.nvim_buf_add_highlight(menuBuf, -1, "ArrowAction", line_number - 1, match_start - 1, match_end)
@@ -409,7 +413,7 @@ function M.getWindowConfig()
 	if res.col == "auto" then
 		res.col = current_config.col
 	end
-
+	res.width = res.width - 4
 	return res
 end
 
