@@ -182,11 +182,19 @@ function M.setup(opts)
 
 	vim.api.nvim_create_autocmd({ "DirChanged", "SessionLoadPost" }, {
 		callback = function()
-			vim.defer_fn(function()
-				git.refresh_git_branch()
-				persist.load_cache_file()
-				config.setState("save_key_cached", config.getState("save_key")())
-			end, 100)
+			persist.load_cache_file()
+			git.refresh_git_branch()
+			config.setState("save_key_cached", config.getState("save_key")())
+		end,
+		desc = "load cache file on DirChanged",
+		group = "arrow",
+	})
+	vim.api.nvim_create_autocmd({ "User" }, {
+		pattern = "NvimTreeChangeDir",
+		callback = function()
+			persist.load_cache_file()
+			git.refresh_git_branch()
+			config.setState("save_key_cached", config.getState("save_key")())
 		end,
 		desc = "load cache file on DirChanged",
 		group = "arrow",

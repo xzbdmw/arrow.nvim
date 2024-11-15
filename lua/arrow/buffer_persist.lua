@@ -101,6 +101,14 @@ end
 
 function M.sync_buffer_bookmarks(bufnr)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
+	if config.getState("per_buffer_config").sort_automatically then
+		table.sort(M.local_bookmarks[bufnr], function(a, b)
+			return a.line < b.line
+		end)
+	end
+	if vim.bo[bufnr].filetype=="toggleterm" then
+		return true
+	end
 
 	-- if
 	-- 	M.last_sync_bookmarks[bufnr]
@@ -110,11 +118,6 @@ function M.sync_buffer_bookmarks(bufnr)
 	-- 	return
 	-- end
 
-	if config.getState("per_buffer_config").sort_automatically then
-		table.sort(M.local_bookmarks[bufnr], function(a, b)
-			return a.line < b.line
-		end)
-	end
 
 	local buffer_file_name = vim.api.nvim_buf_get_name(bufnr)
 	local path = M.cache_file_path(buffer_file_name)

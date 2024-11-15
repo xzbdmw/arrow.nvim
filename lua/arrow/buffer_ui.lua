@@ -89,6 +89,9 @@ function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith, pa
 		row = height + (index - 1) * (lines_count + 2) - (bookmark_count - 1) * lines_count + 2
 	end
 	local width = vim.api.nvim_win_get_width(parent_win) - 20
+	if vim.bo.filetype == "toggleterm" then
+		width = vim.api.nvim_win_get_width(parent_win)
+	end
 	lastRow = row
 	spawn_col = width
 
@@ -100,7 +103,7 @@ function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith, pa
 		row = row,
 		col = -1,
 		relative = "win",
-		border = "solid",
+		border = "rounded",
 		zindex = 11,
 	}
 
@@ -270,6 +273,7 @@ local function after_close(call_buffer)
 end
 
 local function closeMenu(actions_buffer, call_buffer)
+	vim.api.nvim_set_current_win(vim.fn.win_findbuf(call_buffer)[1])
 	if vim.api.nvim_buf_is_valid(actions_buffer) then
 		vim.api.nvim_buf_delete(actions_buffer, { force = true })
 	end

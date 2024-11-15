@@ -240,6 +240,7 @@ function M.open_cache_file()
 			local updated_content = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 			vim.fn.writefile(updated_content, cache_path)
 			M.load_cache_file()
+			notify()
 		end,
 	})
 
