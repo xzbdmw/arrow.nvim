@@ -103,7 +103,7 @@ function M.spawn_preview_window(buffer, index, bookmark, bookmark_count, ith, pa
 		row = row,
 		col = -1,
 		relative = "win",
-		border = "rounded",
+		border = vim.g.neovide and "solid" or "rounded",
 		zindex = 11,
 	}
 

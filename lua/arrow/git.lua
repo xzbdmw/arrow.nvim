@@ -6,7 +6,9 @@ function M.get_git_branch()
 	local git_files = vim.fs.find(".git", { upward = true, stop = vim.loop.os_homedir() })
 
 	if git_files then
+		local time = vim.uv.hrtime()
 		local result = vim.fn.system({ "git", "symbolic-ref", "--short", "HEAD" })
+		Time(time, "git")
 
 		return vim.trim(string.gsub(result, "\n", ""))
 	else

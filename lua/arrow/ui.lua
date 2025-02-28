@@ -418,11 +418,14 @@ function M.getWindowConfig()
 end
 
 function M.openMenu(bufnr)
+	if vim.g.disable_arrow then
+		return
+	end
 	git.refresh_git_branch()
 
 	local call_buffer = bufnr or vim.api.nvim_get_current_buf()
 
-	if vim.g.arrow_filenames == 0 then
+	if #vim.g.arrow_filenames == 0 then
 		persist.load_cache_file()
 	end
 
