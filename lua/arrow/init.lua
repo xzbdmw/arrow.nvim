@@ -138,6 +138,7 @@ function M.setup(opts)
 		"setup",
 		"cleanup",
 		"init",
+		"mod",
 		"launch",
 		"load",
 		"save",
